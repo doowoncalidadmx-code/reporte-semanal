@@ -636,6 +636,16 @@ function build(wk){const M=model(wk);const SW=10.83,SH=7.5,X0=0.4,CW=SW-0.8;cons
     slideNumber:{x:SW-0.9,y:SH-0.33,w:0.5,h:0.22,fontFace:FONT,fontSize:9,color:K.muted,align:"right"}});
   const cell=(x,o={})=>({text:x==null?"":String(x),options:Object.assign({fontFace:FONT,fontSize:10,color:K.ink,align:"center",valign:"middle",margin:[0.02,0.05,0.02,0.05]},o)});
   const hc=(x,o={})=>cell(x,Object.assign({bold:true,fill:{color:K.head}},o));
+  /* keep table text on one line: shrink font first (min 7pt), then break only between words */
+  const emW=ch=>{const c=ch.codePointAt(0);if(c>=0x1100&&(c<=0x11FF||(c>=0x3000&&c<=0x9FFF)||(c>=0xAC00&&c<=0xD7AF)||(c>=0xFF00&&c<=0xFFEF)))return 1;if(c>=0x2190&&c<=0x25FF)return 1;if(ch===" ")return .32;if(/[0-9]/.test(ch))return .6;if(/[A-Z]/.test(ch))return .68;if(/[a-z]/.test(ch))return .55;return .4};
+  const txW=(str,fs,b)=>{let e=0;for(const ch of String(str))e+=emW(ch);return e*fs/72*(b?1.06:1)*1.08};
+  const fitTable=(rows,colW)=>{const occ={};rows.forEach((r,ri)=>{let ci=0;r.forEach(c=>{while(occ[ri+"|"+ci])ci++;const o=c.options||{};const cs=o.colspan||1,rs=o.rowspan||1;for(let a=0;a<rs;a++)for(let b=0;b<cs;b++)occ[(ri+a)+"|"+(ci+b)]=1;
+      let w=0;for(let b=0;b<cs;b++)w+=colW[ci+b]||0;ci+=cs;const m=Array.isArray(o.margin)?o.margin[1]+o.margin[3]:0.1;const av=w-m-0.04;
+      if(typeof c.text!=="string"||!c.text||c.text.includes("\n")||av<=0)return;let fs=o.fontSize||10;const b=!!o.bold;
+      while(txW(c.text,fs,b)>av&&fs>7)fs=Math.round((fs-.5)*2)/2;o.fontSize=fs;
+      if(txW(c.text,fs,b)>av&&/\s/.test(c.text.trim())){const ws=c.text.trim().split(/\s+/),ls=[];let cur="";ws.forEach(x=>{const t2=cur?cur+" "+x:x;if(cur&&txW(t2,fs,b)>av){ls.push(cur);cur=x}else cur=t2});if(cur)ls.push(cur);c.text=ls.join("\n")}
+      c.options=o})});return rows};
+  const _addT=(sl,rows,op)=>{if(op&&op.colW)fitTable(rows,op.colW);return sl.addTable(rows,op)};
   const phCell=(ph,o)=>{if(!ph||!ph.length)return cell("-",o);const runs=[{text:t("see"),options:{hyperlink:{url:ph[0]},color:"2F6FD6",underline:true}}];if(ph.length>1)runs.push({text:" +"+(ph.length-1),options:{color:K.muted}});return {text:runs,options:Object.assign({fontFace:FONT,align:"center",fontSize:9,valign:"middle",margin:[0.02,0.02,0.02,0.02]},o||{})}};
   const border={type:"solid",pt:0.75,color:K.line};
   const ax={catAxisLabelFontFace:FONT,valAxisLabelFontFace:FONT,catAxisLabelFontSize:9,valAxisLabelFontSize:9,catAxisLabelColor:K.ink,valAxisLabelColor:K.muted,valGridLine:{color:"D9D9D9",size:0.5},catGridLine:{style:"none"},
@@ -665,22 +675,22 @@ function build(wk){const M=model(wk);const SW=10.83,SH=7.5,X0=0.4,CW=SW-0.8;cons
     M.forEach(m=>{const c=m.cur.ppm,d1=delta(c,m.prev&&m.prev.ppm),d2=delta(c,m.pm&&m.pm.ppm),d3=delta(c,m.py.v&&m.py.v.ppm);const tp=m.top.real[0];
       rows.push([cell(pName(m.p),{align:"left",bold:true}),cell(fmt(m.prev&&m.prev.ppm)),cell(fmt(c),{bold:true}),cell(dTxt(d1),{color:dCol(d1)}),cell(dTxt(d2),{color:dCol(d2)}),cell(dTxt(d3),{color:dCol(d3)}),cell(fmt(m.cur.def)),cell(fmt(m.cur.usd,2)),cell(tp?fit(dName(tp.def)+" / "+partShort(tp.asm),34):"-",{align:"left",fontSize:9})])});
     unit(s,X0,3.36,CW);
-    s.addTable(rows,{x:X0,y:3.58,w:CW,colW:[1.75,0.8,0.8,0.85,0.85,0.85,0.8,0.95,2.38],rowH:0.27,border,objectName:"Resumen por proceso"});
+    _addT(s,rows,{x:X0,y:3.58,w:CW,colW:[1.75,0.8,0.8,0.85,0.85,0.85,0.8,0.95,2.38],rowH:0.27,border,objectName:"Resumen por proceso"});
     const all=[];M.forEach(m=>m.top.real.forEach(r=>all.push(Object.assign({p:m.p},r))));all.sort((a,b)=>b.score-a.score||b.usd-a.usd);
     const ty=3.58+0.27*(M.length+1)+0.15;
     const tr=[[hc(t("rank")),hc(t("procCol")),hc(t("dtype")),hc(t("part")),hc(t("cls")),hc(t("qty")),hc(t("usd")),hc(t("photo"))]];
     all.slice(0,3).forEach((r,i)=>tr.push([cell(i+1,{bold:true}),cell(pName(r.p)),cell(fit(dName(r.def),18),{align:"left",fontSize:9}),cell(fit(partName(r.asm),44),{align:"left",fontSize:9}),cell(T[lang].cl[r.cls],{color:CC[r.cls],bold:true}),cell(fmt(r.q)),cell(r.usd?fmt(r.usd,2):"-"),phCell(r.ph)]));
     s.addText(t("topPlant"),{x:X0,y:ty,w:5,h:0.25,fontFace:FONT,fontSize:10,bold:true,color:K.ink,margin:0,isTextBox:true});
-    s.addTable(tr,{x:X0,y:ty+0.27,w:CW,colW:[0.4,1.4,1.6,3.55,0.7,0.65,0.98,0.75],rowH:0.25,border,objectName:"Top 3 planta"});
+    _addT(s,tr,{x:X0,y:ty+0.27,w:CW,colW:[0.4,1.4,1.6,3.55,0.7,0.65,0.98,0.75],rowH:0.25,border,objectName:"Top 3 planta"});
     s.addText(t(ATTR==="origin"?"attrO":"attrD")+"  "+t("foot").replace("※ ",""),{x:X0,y:7.02,w:CW-0.7,h:0.25,fontFace:FONT,fontSize:9,color:K.muted,margin:0,isTextBox:true})}
 
   // process slides
-  M.forEach((m,pi)=>{const s=pres.addSlide({masterName:"BODY"});title(s,"▣ "+(PROCS.indexOf(m.p)+1)+". "+(lang==="ko"?pName(m.p)+" "+t("proc"):t("proc")+" – "+pName(m.p))+ttl);
+  M.forEach((m,pi)=>{const s=pres.addSlide({masterName:"BODY"});const pT=m.p.id==="weld"?(lang==="ko"?"융착 (열융착 · 초음파 융착)":"Welding (placa caliente · ultrasónico)"):pName(m.p);title(s,"▣ "+(PROCS.indexOf(m.p)+1)+". "+(lang==="ko"?pT+" "+t("proc"):t("proc")+" – "+pT)+ttl);
     const c=m.cur.ppm,refs=[m.prev,m.pm,m.py.v];
     // PPM comparison table
     unit(s,X0,0.72,5.9);
     const hdr=[hc(t("div")),hc(t("cur")+" ("+wkLab(wk)+")"),hc(t("prev")+" ("+wkLab(m.weeks[2])+")"),hc(t("pm")+" ("+ymLab(m.pmLab)+")"),hc(t("py")+(m.py.v?" ("+m.py.lab+")":""))];
-    s.addTable([hdr,[cell(t("ppm"),{bold:true,fill:{color:K.sub}}),cell(fmt(c),{bold:true,fontSize:12}),...refs.map(r=>cell(r?fmt(r.ppm):"-"))],
+    _addT(s,[hdr,[cell(t("ppm"),{bold:true,fill:{color:K.sub}}),cell(fmt(c),{bold:true,fontSize:12}),...refs.map(r=>cell(r?fmt(r.ppm):"-"))],
       [cell(t("chg"),{bold:true,fill:{color:K.sub}}),cell("-"),...refs.map(r=>{const d=delta(c,r&&r.ppm);return cell(dTxt(d),{bold:d!=null,color:dCol(d)})})]],
       {x:X0,y:0.94,w:5.9,colW:[0.9,1.25,1.25,1.25,1.25],rowH:0.27,border,objectName:"Comparación PPM"});
     // trend chart
@@ -703,12 +713,12 @@ function build(wk){const M=model(wk);const SW=10.83,SH=7.5,X0=0.4,CW=SW-0.8;cons
     const cols=[["py",m.py.v,m.py.v?rangeLab(m.py):t("py")],["ytd",m.ytd.v,m.ytd.lab+" "+t("ytd")],["pm",m.pm,ymLab(m.pmLab)],...m.weeks.map((w,i)=>["w",m.W[i],wkLab(w)]),["cm",m.cm,ymLab(m.cmLab)+" "+t("mtot")]];
     const curIdx=6;const hd=[hc(t("div")),...cols.map((x,i)=>hc(x[2],i===curIdx?{fill:{color:K.navy},color:"FFFFFF"}:{}))];
     const r=(name,f,d,o={})=>[cell(name,Object.assign({bold:true,fill:{color:K.sub}},o)),...cols.map((x,i)=>cell(x[1]&&f(x[1])!=null?fmt(f(x[1]),d):"",Object.assign({},o,i===curIdx?{bold:true}:{})))];
-    s.addTable([hd,r(t("prod"),v=>v.prod,0),r(t("def"),v=>v.def,0),r(t("ppm"),v=>v.ppm,0,{bold:true}),r(t("usd"),v=>v.usd||null,2)],
+    _addT(s,[hd,r(t("prod"),v=>v.prod,0),r(t("def"),v=>v.def,0),r(t("ppm"),v=>v.ppm,0,{bold:true}),r(t("usd"),v=>v.usd||null,2)],
       {x:X0,y:4.5,w:CW,colW:[1.0,...cols.map(()=>(CW-1.0)/cols.length)],rowH:0.25,border,objectName:"Tabla PPM"});
     // top 3 with action columns
     const tr=[[hc(t("rank")),hc(t("dtype")),hc(t("part")),hc(t("cls")),hc(t("qty")),hc(t("usd")),hc(t("photo")),hc(t("cause")),hc(t("owner")),hc(t("due"))]];
     for(let i=0;i<3;i++){const x=m.top.real[i];tr.push(x?[cell(i+1,{bold:true}),cell(fit(dName(x.def),18),{align:"left",fontSize:8.5}),cell((()=>{const a=partName(x.asm),l=locSplit(wk,x.def,x.asm);return fit(l&&(a.length+l.length)<44?a+" · "+l:a,46)})(),{align:"left",fontSize:8.5}),cell(T[lang].cl[x.cls],{color:CC[x.cls],bold:true}),cell(fmt(x.q)),cell(x.usd?fmt(x.usd,2):"-"),phCell(x.ph),cell(""),cell(""),cell("")]:[cell(i+1),cell("-"),cell(""),cell(""),cell(""),cell(""),cell(""),cell(""),cell(""),cell("")])}
-    s.addTable(tr,{x:X0,y:5.95,w:CW,colW:[0.38,1.3,2.95,0.6,0.5,0.8,0.55,1.6,0.6,0.75],rowH:0.25,border,objectName:"Top 3"});
+    _addT(s,tr,{x:X0,y:5.95,w:CW,colW:[0.38,1.3,2.95,0.6,0.5,0.8,0.55,1.6,0.6,0.75],rowH:0.25,border,objectName:"Top 3"});
     const fp=[];const mv=m.cur.mv;
     const grp=(ev,key)=>{const o={};ev.forEach(e=>{o[e[key]]=(o[e[key]]||0)+e.q});return Object.entries(o).sort((a,b)=>b[1]-a[1]).map(([k,q])=>pName(PROCS.find(x=>x.id===k)||{es:k,ko:k})+" "+fmt(q)+t("pcs")).join(", ")};
     if(mv&&mv.out.def)fp.push(t("mvOut").replace("{n}",fmt(mv.out.def)).replace("{l}","→ "+grp(mv.out.ev,"oproc")));
